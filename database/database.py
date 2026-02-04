@@ -104,6 +104,123 @@ elif IS_MONGODB:
 else:
     raise ValueError("Invalid DB_URI. Must start with 'mongodb://', 'mongodb+srv://', or 'postgresql://'")
 
+
+# ============================================
+# BAN USER MANAGEMENT
+# ============================================
+    
+async def ban_user_exist(self, user_id: int):
+    """Check if user is banned"""
+    found = await self.banned_user_data.find_one({'_id': user_id})
+    return bool(found)
+
+async def add_ban_user(self, user_id: int):
+    """Ban a user"""
+    if not await self.ban_user_exist(user_id):
+        await self.banned_user_data.insert_one({'_id': user_id})
+        return
+
+async def del_ban_user(self, user_id: int):
+    """Unban a user"""
+    if await self.ban_user_exist(user_id):
+        await self.banned_user_data.delete_one({'_id': user_id})
+        return
+
+async def get_ban_users(self):
+    """Get all banned user IDs"""
+    users_docs = await self.banned_user_data.find().to_list(length=None)
+    user_ids = [doc['_id'] for doc in users_docs]
+    return user_ids
+
+
+# ============================================
+# FORCE SUBSCRIBE CHANNEL MANAGEMENT
+# ============================================
+    
+async def channel_exist(self, channel_id: int):
+    """Check if channel exists in force-sub list"""
+    found = await self.fsub_data.find_one({'_id': channel_id})
+    return bool(found)
+
+async def add_channel(self, channel_id: int):
+    """Add channel to force-sub list"""
+    if not await self.channel_exist(channel_id):
+        await self.fsub_data.insert_one({'_id': channel_id})
+        return
+
+async def rem_channel(self, channel_id: int):
+    """Remove channel from force-sub list"""
+    if await self.channel_exist(channel_id):
+        await self.fsub_data.delete_one({'_id': channel_id})
+        return
+
+async def show_channels(self):
+    """Get all force-sub channel IDs"""
+    channel_docs = await self.fsub_data.find().to_list(length=None)
+    channel_ids = [doc['_id'] for doc in channel_docs]
+    return channel_ids
+
+async def get_channel_mode(self, channel_id: int):
+    """
+    Get current mode of a channel
+    Returns: 'on' or 'off' (default: 'off')
+    """
+    data = await self.fsub_data.find_one({'_id': channel_id})
+    return data.get("mode", "off") if data else "off"
+
+async def set_channel_mode(self, channel_id: int, mode: str):
+    """
+    Set mode of a channel
+    Args:
+        channel_id: Channel ID
+        mode: 'on' or 'off'
+    """
+    await self.fsub_data.update_one(
+        {'_id': channel_id},
+        {'$set': {'mode': mode}},
+        upsert=True
+    )
+
+
+# ============================================
+# REQUEST FORCE-SUB MANAGEMENT
+# ============================================
+    
+async def req_user(self, channel_id: int, user_id: int):
+    """Add user to channel's join request list"""
+    try:
+        await self.rqst_fsub_Channel_data.update_one(
+            {'_id': int(channel_id)},
+            {'$addToSet': {'user_ids': int(user_id)}},
+            upsert=True
+        )
+    except Exception as e:
+        print(f"[DB ERROR] Failed to add user to request list: {e}")
+
+async def del_req_user(self, channel_id: int, user_id: int):
+    """Remove user from channel's join request list"""
+    await self.rqst_fsub_Channel_data.update_one(
+        {'_id': channel_id}, 
+        {'$pull': {'user_ids': user_id}}
+    )
+
+async def req_user_exist(self, channel_id: int, user_id: int):
+    """Check if user exists in channel's join request list"""
+    try:
+        found = await self.rqst_fsub_Channel_data.find_one({
+            '_id': int(channel_id),
+            'user_ids': int(user_id)
+        })
+        return bool(found)
+    except Exception as e:
+        print(f"[DB ERROR] Failed to check request list: {e}")
+        return False
+
+async def reqChannel_exist(self, channel_id: int):
+    """Check if channel exists in force-sub list"""
+    channel_ids = await self.show_channels()
+    return channel_id in channel_ids
+
 # ============================================================================
 # UNIFIED DATABASE FUNCTIONS (Work with both MongoDB and PostgreSQL)
 # ============================================================================
