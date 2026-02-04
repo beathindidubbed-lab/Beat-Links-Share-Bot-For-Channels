@@ -39,7 +39,7 @@ ABOUT_TXT = """<b>›› ᴀɴɪᴍᴇ ᴅɪsᴄᴜssɪᴏɴ : <a href=https://t
 ›› ᴏᴡɴᴇʀ: <a href=https://t.me/beat_anime_ocean>ʙᴇᴀᴛ</a>
 ›› ʟᴀɴɢᴜᴀɢᴇ: <a href='https://docs.python.org/3/'>Pʏᴛʜᴏɴ 3</a>
 ›› ʟɪʙʀᴀʀʏ: <a href='https://docs.pyrogram.org/'>Pʏʀᴏɢʀᴀᴍ ᴠ2</a>
-›› ᴅᴀᴛᴀʙᴀsᴇ: <a href='https://www.mongodb.com/docs/'>Mᴏɴɢᴏ ᴅʙ</a>ᴀɴᴅ <a href='https://neon.com/docs/'>ɴᴇᴏɴ ᴅʙ</a>
+›› ᴅᴀᴛᴀʙᴀsᴇ: <a href='https://www.mongodb.com/docs/'>Mᴏɴɢᴏ ᴅʙ</a>  ᴀɴᴅ  <a href='https://neon.com/docs/'>ɴᴇᴏɴ ᴅʙ</a>
 ›› ᴅᴇᴠᴇʟᴏᴘᴇʀ: @Beat_Anime_Ocen</b></blockquote>""" 
 
 CHANNELS_TXT = """<b>›› ᴀɴɪᴍᴇ ᴄʜᴀɴɴᴇʟ: <a href=https://t.me/Beat_Hindi_Dubbed> ʙᴇᴀᴛ ᴀɴɪᴍᴇ ᴡᴏʀʟᴅ</a>
