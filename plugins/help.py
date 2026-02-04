@@ -22,8 +22,7 @@ from config import *
 HELP_PICS = os.environ.get("HELP_PICS", "").split(",")
 if not HELP_PICS or HELP_PICS == [""]:
     HELP_PICS = [
-        "https://telegra.ph/file/ec17880d61180d3312d6a.jpg",
-        "https://telegra.ph/file/e292b12890b8b4b9dcbd1.jpg"
+        "https://ibb.co/BVccVQZq"
     ]
 
 # Start pictures support (NEW FEATURE)
@@ -122,4 +121,5 @@ async def help_command(client: Bot, message: Message):
             parse_mode=ParseMode.HTML,
             quote=True
         )
+
 
