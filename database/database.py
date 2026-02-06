@@ -9,6 +9,10 @@ from typing import List, Optional
 from datetime import datetime, timedelta
 import base64
 from config import DB_URI, DB_NAME
+import re
+
+# Pattern for validating IDs
+id_pattern = re.compile(r'^-?\d+$')
 
 # Detect database type from connection string
 IS_POSTGRES = DB_URI.startswith('postgresql://') or DB_URI.startswith('postgres://')
@@ -75,8 +79,27 @@ if IS_POSTGRES:
             await conn.execute('''
                 CREATE TABLE IF NOT EXISTS fsub_channels (
                     channel_id BIGINT PRIMARY KEY,
+                    mode TEXT DEFAULT 'off',
                     status TEXT DEFAULT 'active',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # Banned users table
+            await conn.execute('''
+                CREATE TABLE IF NOT EXISTS banned_users (
+                    user_id BIGINT PRIMARY KEY,
+                    banned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # Request FSub table
+            await conn.execute('''
+                CREATE TABLE IF NOT EXISTS request_fsub (
+                    channel_id BIGINT,
+                    user_id BIGINT,
+                    requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (channel_id, user_id)
                 )
             ''')
         print("✅ PostgreSQL tables created/verified")
@@ -100,126 +123,252 @@ elif IS_MONGODB:
     channels_collection = database['channels']
     admins_collection = database['admins']
     fsub_channels_collection = database['fsub_channels']
+    banned_users_collection = database['banned_users']
+    request_fsub_collection = database['request_fsub']
 
 else:
     raise ValueError("Invalid DB_URI. Must start with 'mongodb://', 'mongodb+srv://', or 'postgresql://'")
 
 
 # ============================================
-# BAN USER MANAGEMENT
+# DATABASE CLASS (For compatibility with existing code)
 # ============================================
+
+class Database:
+    def __init__(self):
+        if IS_MONGODB:
+            self.user_data = user_data
+            self.channels_data = channels_collection
+            self.admins_data = admins_collection
+            self.fsub_data = fsub_channels_collection
+            self.banned_user_data = banned_users_collection
+            self.rqst_fsub_Channel_data = request_fsub_collection
     
-async def ban_user_exist(self, user_id: int):
-    """Check if user is banned"""
-    found = await self.banned_user_data.find_one({'_id': user_id})
-    return bool(found)
-
-async def add_ban_user(self, user_id: int):
-    """Ban a user"""
-    if not await self.ban_user_exist(user_id):
-        await self.banned_user_data.insert_one({'_id': user_id})
-        return
-
-async def del_ban_user(self, user_id: int):
-    """Unban a user"""
-    if await self.ban_user_exist(user_id):
-        await self.banned_user_data.delete_one({'_id': user_id})
-        return
-
-async def get_ban_users(self):
-    """Get all banned user IDs"""
-    users_docs = await self.banned_user_data.find().to_list(length=None)
-    user_ids = [doc['_id'] for doc in users_docs]
-    return user_ids
-
-
-# ============================================
-# FORCE SUBSCRIBE CHANNEL MANAGEMENT
-# ============================================
+    # ============================================
+    # BAN USER MANAGEMENT
+    # ============================================
     
-async def channel_exist(self, channel_id: int):
-    """Check if channel exists in force-sub list"""
-    found = await self.fsub_data.find_one({'_id': channel_id})
-    return bool(found)
+    async def ban_user_exist(self, user_id: int):
+        """Check if user is banned"""
+        if IS_POSTGRES:
+            async with get_connection() as conn:
+                result = await conn.fetchval(
+                    'SELECT EXISTS(SELECT 1 FROM banned_users WHERE user_id = $1)',
+                    user_id
+                )
+                return result
+        else:
+            found = await self.banned_user_data.find_one({'_id': user_id})
+            return bool(found)
 
-async def add_channel(self, channel_id: int):
-    """Add channel to force-sub list"""
-    if not await self.channel_exist(channel_id):
-        await self.fsub_data.insert_one({'_id': channel_id})
-        return
+    async def add_ban_user(self, user_id: int):
+        """Ban a user"""
+        if IS_POSTGRES:
+            async with get_connection() as conn:
+                try:
+                    await conn.execute(
+                        'INSERT INTO banned_users (user_id) VALUES ($1)',
+                        user_id
+                    )
+                except asyncpg.UniqueViolationError:
+                    pass
+        else:
+            if not await self.ban_user_exist(user_id):
+                await self.banned_user_data.insert_one({'_id': user_id})
 
-async def rem_channel(self, channel_id: int):
-    """Remove channel from force-sub list"""
-    if await self.channel_exist(channel_id):
-        await self.fsub_data.delete_one({'_id': channel_id})
-        return
+    async def del_ban_user(self, user_id: int):
+        """Unban a user"""
+        if IS_POSTGRES:
+            async with get_connection() as conn:
+                await conn.execute(
+                    'DELETE FROM banned_users WHERE user_id = $1',
+                    user_id
+                )
+        else:
+            if await self.ban_user_exist(user_id):
+                await self.banned_user_data.delete_one({'_id': user_id})
 
-async def show_channels(self):
-    """Get all force-sub channel IDs"""
-    channel_docs = await self.fsub_data.find().to_list(length=None)
-    channel_ids = [doc['_id'] for doc in channel_docs]
-    return channel_ids
-
-async def get_channel_mode(self, channel_id: int):
-    """
-    Get current mode of a channel
-    Returns: 'on' or 'off' (default: 'off')
-    """
-    data = await self.fsub_data.find_one({'_id': channel_id})
-    return data.get("mode", "off") if data else "off"
-
-async def set_channel_mode(self, channel_id: int, mode: str):
-    """
-    Set mode of a channel
-    Args:
-        channel_id: Channel ID
-        mode: 'on' or 'off'
-    """
-    await self.fsub_data.update_one(
-        {'_id': channel_id},
-        {'$set': {'mode': mode}},
-        upsert=True
-    )
-
-
-# ============================================
-# REQUEST FORCE-SUB MANAGEMENT
-# ============================================
+    async def get_ban_users(self):
+        """Get all banned user IDs"""
+        if IS_POSTGRES:
+            async with get_connection() as conn:
+                rows = await conn.fetch('SELECT user_id FROM banned_users')
+                return [row['user_id'] for row in rows]
+        else:
+            users_docs = await self.banned_user_data.find().to_list(length=None)
+            user_ids = [doc['_id'] for doc in users_docs]
+            return user_ids
     
-async def req_user(self, channel_id: int, user_id: int):
-    """Add user to channel's join request list"""
-    try:
-        await self.rqst_fsub_Channel_data.update_one(
-            {'_id': int(channel_id)},
-            {'$addToSet': {'user_ids': int(user_id)}},
-            upsert=True
-        )
-    except Exception as e:
-        print(f"[DB ERROR] Failed to add user to request list: {e}")
+    async def get_all_admins(self):
+        """Get all admin user IDs"""
+        return await list_admins()
 
-async def del_req_user(self, channel_id: int, user_id: int):
-    """Remove user from channel's join request list"""
-    await self.rqst_fsub_Channel_data.update_one(
-        {'_id': channel_id}, 
-        {'$pull': {'user_ids': user_id}}
-    )
+    # ============================================
+    # FORCE SUBSCRIBE CHANNEL MANAGEMENT
+    # ============================================
+    
+    async def channel_exist(self, channel_id: int):
+        """Check if channel exists in force-sub list"""
+        if IS_POSTGRES:
+            async with get_connection() as conn:
+                result = await conn.fetchval(
+                    'SELECT EXISTS(SELECT 1 FROM fsub_channels WHERE channel_id = $1)',
+                    channel_id
+                )
+                return result
+        else:
+            found = await self.fsub_data.find_one({'_id': channel_id})
+            return bool(found)
 
-async def req_user_exist(self, channel_id: int, user_id: int):
-    """Check if user exists in channel's join request list"""
-    try:
-        found = await self.rqst_fsub_Channel_data.find_one({
-            '_id': int(channel_id),
-            'user_ids': int(user_id)
-        })
-        return bool(found)
-    except Exception as e:
-        print(f"[DB ERROR] Failed to check request list: {e}")
-        return False
+    async def add_channel(self, channel_id: int):
+        """Add channel to force-sub list"""
+        if IS_POSTGRES:
+            async with get_connection() as conn:
+                try:
+                    await conn.execute(
+                        'INSERT INTO fsub_channels (channel_id) VALUES ($1)',
+                        channel_id
+                    )
+                except asyncpg.UniqueViolationError:
+                    pass
+        else:
+            if not await self.channel_exist(channel_id):
+                await self.fsub_data.insert_one({'_id': channel_id, 'mode': 'off'})
 
-async def reqChannel_exist(self, channel_id: int):
-    """Check if channel exists in force-sub list"""
-    channel_ids = await self.show_channels()
-    return channel_id in channel_ids
+    async def rem_channel(self, channel_id: int):
+        """Remove channel from force-sub list"""
+        if IS_POSTGRES:
+            async with get_connection() as conn:
+                await conn.execute(
+                    'DELETE FROM fsub_channels WHERE channel_id = $1',
+                    channel_id
+                )
+        else:
+            if await self.channel_exist(channel_id):
+                await self.fsub_data.delete_one({'_id': channel_id})
+    
+    # Alias for compatibility
+    async def del_channel(self, channel_id: int):
+        """Alias for rem_channel"""
+        return await self.rem_channel(channel_id)
+
+    async def show_channels(self):
+        """Get all force-sub channel IDs"""
+        if IS_POSTGRES:
+            async with get_connection() as conn:
+                rows = await conn.fetch('SELECT channel_id FROM fsub_channels')
+                return [row['channel_id'] for row in rows]
+        else:
+            channel_docs = await self.fsub_data.find().to_list(length=None)
+            channel_ids = [doc['_id'] for doc in channel_docs]
+            return channel_ids
+
+    async def get_channel_mode(self, channel_id: int):
+        """
+        Get current mode of a channel
+        Returns: 'on' or 'off' (default: 'off')
+        """
+        if IS_POSTGRES:
+            async with get_connection() as conn:
+                result = await conn.fetchval(
+                    'SELECT mode FROM fsub_channels WHERE channel_id = $1',
+                    channel_id
+                )
+                return result if result else "off"
+        else:
+            data = await self.fsub_data.find_one({'_id': channel_id})
+            return data.get("mode", "off") if data else "off"
+
+    async def set_channel_mode(self, channel_id: int, mode: str):
+        """
+        Set mode of a channel
+        Args:
+            channel_id: Channel ID
+            mode: 'on' or 'off'
+        """
+        if IS_POSTGRES:
+            async with get_connection() as conn:
+                await conn.execute('''
+                    INSERT INTO fsub_channels (channel_id, mode)
+                    VALUES ($1, $2)
+                    ON CONFLICT (channel_id) DO UPDATE
+                    SET mode = $2
+                ''', channel_id, mode)
+        else:
+            await self.fsub_data.update_one(
+                {'_id': channel_id},
+                {'$set': {'mode': mode}},
+                upsert=True
+            )
+
+    # ============================================
+    # REQUEST FORCE-SUB MANAGEMENT
+    # ============================================
+    
+    async def req_user(self, channel_id: int, user_id: int):
+        """Add user to channel's join request list"""
+        try:
+            if IS_POSTGRES:
+                async with get_connection() as conn:
+                    try:
+                        await conn.execute(
+                            'INSERT INTO request_fsub (channel_id, user_id) VALUES ($1, $2)',
+                            channel_id, user_id
+                        )
+                    except asyncpg.UniqueViolationError:
+                        pass
+            else:
+                await self.rqst_fsub_Channel_data.update_one(
+                    {'_id': int(channel_id)},
+                    {'$addToSet': {'user_ids': int(user_id)}},
+                    upsert=True
+                )
+        except Exception as e:
+            print(f"[DB ERROR] Failed to add user to request list: {e}")
+
+    async def del_req_user(self, channel_id: int, user_id: int):
+        """Remove user from channel's join request list"""
+        if IS_POSTGRES:
+            async with get_connection() as conn:
+                await conn.execute(
+                    'DELETE FROM request_fsub WHERE channel_id = $1 AND user_id = $2',
+                    channel_id, user_id
+                )
+        else:
+            await self.rqst_fsub_Channel_data.update_one(
+                {'_id': channel_id}, 
+                {'$pull': {'user_ids': user_id}}
+            )
+
+    async def req_user_exist(self, channel_id: int, user_id: int):
+        """Check if user exists in channel's join request list"""
+        try:
+            if IS_POSTGRES:
+                async with get_connection() as conn:
+                    result = await conn.fetchval(
+                        'SELECT EXISTS(SELECT 1 FROM request_fsub WHERE channel_id = $1 AND user_id = $2)',
+                        channel_id, user_id
+                    )
+                    return result
+            else:
+                found = await self.rqst_fsub_Channel_data.find_one({
+                    '_id': int(channel_id),
+                    'user_ids': int(user_id)
+                })
+                return bool(found)
+        except Exception as e:
+            print(f"[DB ERROR] Failed to check request list: {e}")
+            return False
+
+    async def reqChannel_exist(self, channel_id: int):
+        """Check if channel exists in force-sub list"""
+        channel_ids = await self.show_channels()
+        return channel_id in channel_ids
+
+
+# Create global db instance
+db = Database()
+
 
 # ============================================================================
 # UNIFIED DATABASE FUNCTIONS (Work with both MongoDB and PostgreSQL)
