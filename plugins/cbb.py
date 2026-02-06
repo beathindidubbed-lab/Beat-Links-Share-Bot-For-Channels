@@ -142,12 +142,11 @@ print("[CBB] Loading COMPLETE callback handler module...")
         await query.message.delete()
         try:
             await query.message.reply_to_message.delete()
-        except:
-            pass
 
     
 
 print("[CBB] ✅ COMPLETE Comprehensive callback handler loaded!")
+
 
 
 
