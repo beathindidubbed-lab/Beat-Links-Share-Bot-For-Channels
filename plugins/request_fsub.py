@@ -21,7 +21,7 @@ from pyrogram.errors.exceptions.bad_request_400 import UserNotParticipant, Invit
 from bot import Bot
 from config import *
 from helper_func import *
-from database.database import *
+from database.database import db
 
 # Don't Remove Credit @BeatAnime, @mebeet1
 # Ask Doubt on telegram @Beat_Anime_Discussion
@@ -240,11 +240,22 @@ async def delete_requested_users(client, message: Message):
         return await message.reply("❌ Iɴᴠᴀʟɪᴅ ᴄʜᴀɴɴᴇʟ ID.", quote=True)
 
     # Get channel request data
-    channel_data = await db.rqst_fsub_Channel_data.find_one({'_id': channel_id})
-    if not channel_data:
-        return await message.reply("ℹ️ Nᴏ ʀᴇǫᴜᴇsᴛ ᴄʜᴀɴɴᴇʟ ғᴏᴜɴᴅ ғᴏʀ ᴛʜɪs ᴄʜᴀɴɴᴇʟ.", quote=True)
+    if IS_MONGODB:
+        channel_data = await db.rqst_fsub_Channel_data.find_one({'_id': channel_id})
+        if not channel_data:
+            return await message.reply("ℹ️ Nᴏ ʀᴇǫᴜᴇsᴛ ᴄʜᴀɴɴᴇʟ ғᴏᴜɴᴅ ғᴏʀ ᴛʜɪs ᴄʜᴀɴɴᴇʟ.", quote=True)
 
-    user_ids = channel_data.get("user_ids", [])
+        user_ids = channel_data.get("user_ids", [])
+    else:
+        # For PostgreSQL
+        from database.database import get_connection
+        async with get_connection() as conn:
+            rows = await conn.fetch(
+                'SELECT user_id FROM request_fsub WHERE channel_id = $1',
+                channel_id
+            )
+            user_ids = [row['user_id'] for row in rows]
+    
     if not user_ids:
         return await message.reply("✅ Nᴏ ᴜsᴇʀs ᴛᴏ ᴘʀᴏᴄᴇss.", quote=True)
 
