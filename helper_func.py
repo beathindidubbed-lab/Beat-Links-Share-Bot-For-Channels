@@ -1,15 +1,14 @@
-# +++ Modified By Yato [telegram username: @i_killed_my_clan & @ProYato] +++ # aNDI BANDI SANDI JISNE BHI CREDIT HATAYA USKI BANDI RAndi 
+
 import base64
 import re
 import asyncio
 from pyrogram import filters
 from pyrogram.enums import ChatMemberStatus
-from config import ADMINS
+from config import ADMINS, OWNER_ID
 from pyrogram.errors.exceptions.bad_request_400 import UserNotParticipant
 from pyrogram.errors import FloodWait
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.filters import Filter
-from config import OWNER_ID
 from database.database import is_admin
 
 class IsAdmin(Filter):
@@ -21,9 +20,17 @@ is_admin_filter = IsAdmin()
 class IsOwnerOrAdmin(Filter):
     async def __call__(self, client, message):
         user_id = message.from_user.id
-        return user_id == OWNER_ID or await is_admin(user_id)
+        return user_id == OWNER_ID or await is_admin(user_id) or user_id in ADMINS
 
 is_owner_or_admin = IsOwnerOrAdmin()
+
+# Create admin filter for compatibility with existing code
+class AdminFilter(Filter):
+    async def __call__(self, client, message):
+        user_id = message.from_user.id
+        return user_id == OWNER_ID or await is_admin(user_id) or user_id in ADMINS
+
+admin = AdminFilter()
 
 async def encode(string):
     string_bytes = string.encode("ascii")
