@@ -1,4 +1,3 @@
-
 import base64
 import re
 import asyncio
@@ -65,3 +64,17 @@ def get_readable_time(seconds: int) -> str:
     time_list.reverse()
     up_time += ":".join(time_list)
     return up_time
+
+def get_exp_time(seconds: int) -> str:
+    """Convert seconds to readable expiry time format"""
+    if seconds < 60:
+        return f"{seconds} seconds"
+    elif seconds < 3600:
+        minutes = seconds // 60
+        return f"{minutes} minute{'s' if minutes != 1 else ''}"
+    elif seconds < 86400:
+        hours = seconds // 3600
+        return f"{hours} hour{'s' if hours != 1 else ''}"
+    else:
+        days = seconds // 86400
+        return f"{days} day{'s' if days != 1 else ''}"
