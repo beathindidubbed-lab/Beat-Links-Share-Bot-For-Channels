@@ -17,3 +17,6 @@ asyncpg==0.29.0
 aiohttp
 asyncio
 aiofiles
+
+# System utilities
+psutil
