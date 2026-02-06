@@ -24,9 +24,7 @@ from pyrogram.errors import FloodWait, UserIsBlocked, InputUserDeactivated, User
 from bot import Bot
 from config import *
 from helper_func import *
-from database.database import *
-
-
+from database.database import db
 
 #BAN-USER-SYSTEM
 @Bot.on_message(filters.private & filters.command('ban') & admin)
@@ -58,7 +56,7 @@ async def add_banuser(client: Client, message: Message):
             continue
 
         if uid_int in banuser_ids:
-            report += f"⚠️ Aʟʀᴇᴀᴅʏ : <code>{uid_int}</code>\n"
+            report += f"⚠️ Aʟʀᴇᴀᴅʏ ʙᴀɴɴᴇᴅ: <code>{uid_int}</code>\n"
             continue
 
         if len(str(uid_int)) == 10:
@@ -103,7 +101,7 @@ async def delete_banuser(client: Client, message: Message):
         try:
             uid_int = int(uid)
         except:
-            report += f"⚠️ Iɴᴀᴠʟɪᴅ ID: <code>{uid}</code>\n"
+            report += f"⚠️ Iɴᴠᴀʟɪᴅ ID: <code>{uid}</code>\n"
             continue
 
         if uid_int in banuser_ids:
