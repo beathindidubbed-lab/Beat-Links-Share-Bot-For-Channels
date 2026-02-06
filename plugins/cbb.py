@@ -281,6 +281,12 @@ async def cb_handler(client: Bot, query: CallbackQuery):
         try:
             chat = await client.get_chat(cid)
             mode = await db.get_channel_mode(cid)
+        
+            # Handle None mode (not initialized)
+            if mode is None:
+                mode = "off"
+                await db.set_channel_mode(cid, "off")
+        
             status = "🟢 ᴏɴ" if mode == "on" else "🔴 ᴏғғ"
             new_mode = "off" if mode == "on" else "on"
             buttons = [
@@ -1152,4 +1158,5 @@ async def handle_stats_callback(client: Bot, query: CallbackQuery):
 
 
 print("[CBB] ✅ COMPLETE Comprehensive callback handler loaded!")
+
 
